@@ -17,6 +17,7 @@ public class CodeGeneratorVisitor implements ASTVisitor {
 
     @Override
     public Object visitAssignmentStatement(AssignmentStatement assignmentStatement, Object arg) throws PLCCompilerException {
+
         return null;
     }
 
