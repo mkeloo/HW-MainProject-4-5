@@ -490,13 +490,81 @@ class CodeGenTest_starter {
 
 	/* ================================= DANIEL  ================================= */
 
+	@Test
+	void cg27() throws Exception {
+		String source = """
+            int f(int x, int y)
+            <:
+              if (x > y) {
+                ^x - y;
+              } else {
+                ^y - x;
+              }
+            :>
+            """;
+		Object result = PLCLangExec.runCode(packageName, source, 10, 5);
+		show(result);
+		assertEquals(5, (int)result);
+	}
 
+	@Test
+	void cg28() throws Exception {
+		String source = """
+            int f(int val)
+            <:
+              int x = val;
+              <:
+                 x = x * 2;
+              :>;
+              <:
+                 x = x + 3;
+              :>;
+              ^x;
+            :>
+            """;
+		Object result = PLCLangExec.runCode(packageName, source, 4);
+		show(result);
+		assertEquals(11, (int)result);
+	}
 
+	@Test
+	void cg29() throws Exception {
+		String source = """
+            int sum(int a, int b, int c)
+            <:
+              ^a + b + c;
+            :>
+            """;
+		Object result = PLCLangExec.runCode(packageName, source, 1, 2, 3);
+		show(result);
+		assertEquals(6, (int)result);
+	}
 
+	@Test
+	void cg30() throws Exception {
+		String source = """
+        int doubleIt(int x)
+        <:
+          ^ x * 2;
+        :>
+        """;
+		Object result = PLCLangExec.runCode(packageName, source, 4);
+		show(result);
+		assertEquals(8, (int)result);
+	}
 
-
-
-
-
+	@Test
+	void cg31() throws Exception {
+		String source = """
+        int addFive(int x)
+        <:
+          int y = x + 5;
+          ^y;
+        :>
+        """;
+		Object result = PLCLangExec.runCode(packageName, source, 10);
+		show(result);
+		assertEquals(15, (int)result);
+	}
 
 }

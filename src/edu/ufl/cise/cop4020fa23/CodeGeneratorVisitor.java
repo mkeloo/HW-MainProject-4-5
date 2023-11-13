@@ -189,54 +189,132 @@ public class CodeGeneratorVisitor implements ASTVisitor {
 
     @Override
     public Object visitBooleanLitExpr(BooleanLitExpr booleanLitExpr, Object arg) throws PLCCompilerException {
-        return null;
+        return Boolean.parseBoolean(booleanLitExpr.getText()) ? "true" : "false";
     }
 
 
     @Override
     public Object visitConditionalExpr(ConditionalExpr conditionalExpr, Object arg) throws PLCCompilerException {
-        return null;
+        StringBuilder sb = new StringBuilder();
+        Object guardExprCode = conditionalExpr.getGuardExpr().visit(this, arg);
+        sb.append("(").append(guardExprCode).append(" ? ");
+        Object trueExprCode = conditionalExpr.getTrueExpr().visit(this, arg);
+        sb.append(trueExprCode).append(" : ");
+        Object falseExprCode = conditionalExpr.getFalseExpr().visit(this, arg);
+        sb.append(falseExprCode).append(")");
+        return sb.toString();
     }
 
 
     @Override
     public Object visitBinaryExpr(BinaryExpr binaryExpr, Object arg) throws PLCCompilerException {
-        return null;
+        StringBuilder sb = new StringBuilder();
+        Object leftExprCode = binaryExpr.getLeftExpr().visit(this, arg);
+        Type leftExprType = binaryExpr.getLeftExpr().getType();
+        Object rightExprCode = binaryExpr.getRightExpr().visit(this, arg);
+        Kind opKind = binaryExpr.getOpKind();
+        if (leftExprType == Type.STRING && opKind == Kind.EQ) {
+            sb.append(leftExprCode).append(".equals(").append(rightExprCode).append(")");
+        }
+        else if (opKind == Kind.EXP) {
+            sb.append("((int)Math.round(Math.pow(").append(leftExprCode).append(", ").append(rightExprCode).append(")))");
+        }
+        else {
+            String operator = switch(opKind) {
+                case PLUS -> "+";
+                case MINUS -> "-";
+                case TIMES -> "*";
+                case DIV -> "/";
+                case MOD -> "%";
+                case AND -> "&&";
+                case OR -> "||";
+                case EQ -> "==";
+                case BANG -> "!";
+                case LT -> "<";
+                case GT -> ">";
+                case LE -> "<=";
+                case GE -> ">=";
+                default -> throw new PLCCompilerException("Unsupported binary operator: " + opKind);
+            };
+            sb.append("(").append(leftExprCode).append(" ").append(operator).append(" ").append(rightExprCode).append(")");
+        }
+        return sb.toString();
     }
+
 
 
     @Override
     public Object visitUnaryExpr(UnaryExpr unaryExpr, Object arg) throws PLCCompilerException {
-        return null;
+        StringBuilder sb = new StringBuilder();
+        Object exprCode = unaryExpr.getExpr().visit(this, arg);
+        Kind opKind = unaryExpr.getOp();
+        String operator = switch (opKind) {
+            case PLUS -> "+";
+            case MINUS -> "-";
+            case BANG -> "!";
+            default -> throw new PLCCompilerException("Unsupported unary operator: " + opKind);
+        };
+        sb.append(operator).append(exprCode);
+        return sb.toString();
     }
+
+
 
 
     @Override
     public Object visitLValue(LValue lValue, Object arg) throws PLCCompilerException {
-        return null;
+        if (lValue.getNameDef() != null) {
+            return lValue.getNameDef().getJavaName();
+        } else {
+            if (arg instanceof Map) {
+                Map<String, String> paramMap = (Map<String, String>) arg;
+                String originalName = lValue.getName();
+                String paramName = paramMap.getOrDefault(originalName, originalName);
+                return paramName;
+            } else {
+                throw new PLCCompilerException("NameDef not found for LValue: " + lValue);
+            }
+        }
     }
+
+
 
 
     @Override
     public Object visitAssignmentStatement(AssignmentStatement assignmentStatement, Object arg) throws PLCCompilerException {
-        return null;
+        StringBuilder sb = new StringBuilder();
+        Object lValueCode = assignmentStatement.getlValue().visit(this, arg);
+        if (lValueCode != null) {
+            sb.append(lValueCode.toString());
+        }
+        sb.append(" = ");
+        Object exprCode = assignmentStatement.getE().visit(this, arg);
+        if (exprCode != null) {
+            sb.append(exprCode.toString());
+        }
+        sb.append(";\n");
+        return sb.toString();
     }
 
 
     @Override
     public Object visitWriteStatement(WriteStatement writeStatement, Object arg) throws PLCCompilerException {
-        return null;
+        StringBuilder sb = new StringBuilder();
+        Object exprCode = writeStatement.getExpr().visit(this, arg);
+        if (exprCode != null) {
+            sb.append("ConsoleIO.write(").append(exprCode.toString()).append(");\n");
+        }
+        return sb.toString();
     }
 
 
     @Override
     public Object visitReturnStatement(ReturnStatement returnStatement, Object arg) throws PLCCompilerException {
-        return null;
+        StringBuilder code = new StringBuilder();
+        String exprCode = (String) returnStatement.getE().visit(this, arg);
+        code.append("return ").append(exprCode).append(";\n");
+        return code.toString();
     }
-
-
-
-
 
 
     /* ================================= ASSIGNMENT 5 METHODS  ================================= */
