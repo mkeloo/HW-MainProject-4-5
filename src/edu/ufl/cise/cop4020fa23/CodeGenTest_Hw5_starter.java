@@ -837,8 +837,121 @@ class CodeGenTest_Hw5_starter {
 
 	/* ================================= DANIEL  ================================= */
 
+	@Test
+	void hw5_29() throws Exception {
+		String source = """
+        image circlePattern(int w, int h) <:
+            image[w,h] im;
+            im[x,y] = ? (x - w/2)*(x - w/2) + (y - h/2)*(y - h/2) < (w/4)*(w/4) -> YELLOW, BLACK;
+            ^im;
+            :>
+        """;
+		int w = 200;
+		int h = 200;
+		BufferedImage result = (BufferedImage) PLCLangExec.runCode(packageName, source, w, h);
+		BufferedImage expected = ImageOps.makeImage(w, h);
+		int radiusSquared = (w / 4) * (w / 4);
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++)
+				expected.setRGB(x, y, (x - w/2)*(x - w/2) + (y - h/2)*(y - h/2) < radiusSquared ? Color.YELLOW.getRGB() : Color.BLACK.getRGB());
+		compareImages(expected, result);
+		show(result);
+	}
 
 
+	@Test
+	void hw5_30() throws Exception {
+		String source = """
+        image randomPixelImage(int w, int h) <:
+            image[w,h] im;
+            im[x,y] = [int(Math.random()*255), int(Math.random()*255), int(Math.random()*255)];
+            ^im;
+            :>
+        """;
+		int w = 150;
+		int h = 150;
+		BufferedImage result = (BufferedImage) PLCLangExec.runCode(packageName, source, w, h);
+		show(result);
+	}
 
+
+	@Test
+	void hw5_31() throws Exception {
+		String source = """
+        image horizontalGradient(int w, int h) <:
+            image[w, h] im;
+            im[x, y] = [x, x, x];
+            ^im;
+            :>
+        """;
+		int w = 256;
+		int h = 100;
+		BufferedImage result = (BufferedImage) PLCLangExec.runCode(packageName, source, w, h);
+		BufferedImage expected = ImageOps.makeImage(w, h);
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++)
+				expected.setRGB(x, y, PixelOps.pack(x, x, x));
+		compareImages(expected, result);
+		show(result);
+	}
+
+
+	@Test
+	void hw5_32() throws Exception {
+		String source = """
+        image colorInversion(int w, int h, string url) <:
+            image im = url;
+            image[w,h] inverted;
+            inverted[x,y] = [255 - im[x,y]:red, 255 - im[x,y]:green, 255 - im[x,y]:blue];
+            ^inverted;
+            :>
+        """;
+		int w = 200;
+		int h = 200;
+		String url = testURL;
+		BufferedImage result = (BufferedImage) PLCLangExec.runCode(packageName, source, w, h, url);
+		BufferedImage original = FileURLIO.readImage(url, w, h);
+		BufferedImage expected = ImageOps.makeImage(w, h);
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++) {
+				Color origColor = new Color(original.getRGB(x, y));
+				Color invColor = new Color(255 - origColor.getRed(), 255 - origColor.getGreen(), 255 - origColor.getBlue());
+				expected.setRGB(x, y, invColor.getRGB());
+			}
+		compareImages(expected, result);
+		show(result);
+	}
+
+
+	@Test
+	void hw5_33() throws Exception {
+		String source = """
+        image tintImage(int w, int h, string url, pixel tint) <:
+            image im = url;
+            image[w,h] tinted;
+            tinted[x,y] = (im[x,y] + tint) / 2;
+            ^tinted;
+            :>
+        """;
+		int w = 200;
+		int h = 200;
+		String url = testURL;
+		int tint = PixelOps.pack(128, 128, 255);
+		BufferedImage result = (BufferedImage) PLCLangExec.runCode(packageName, source, w, h, url, tint);
+		BufferedImage original = FileURLIO.readImage(url, w, h);
+		BufferedImage expected = ImageOps.makeImage(w, h);
+		for (int y = 0; y < h; y++)
+			for (int x = 0; x < w; x++) {
+				Color origColor = new Color(original.getRGB(x, y));
+				Color tintColor = new Color(128, 128, 255);
+				Color blended = new Color(
+						(origColor.getRed() + tintColor.getRed()) / 2,
+						(origColor.getGreen() + tintColor.getGreen()) / 2,
+						(origColor.getBlue() + tintColor.getBlue()) / 2);
+				expected.setRGB(x, y, blended.getRGB());
+			}
+		compareImages(expected, result);
+		show(result);
+	}
 
 }

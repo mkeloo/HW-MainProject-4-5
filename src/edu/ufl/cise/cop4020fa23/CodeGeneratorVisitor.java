@@ -378,8 +378,249 @@ public class CodeGeneratorVisitor implements ASTVisitor {
 
     /* ================================= *************8  ================================= */
 
+    @Override
+    public Object visitUnaryExpr(UnaryExpr unaryExpr, Object arg) throws PLCCompilerException {
+        StringBuilder sb = new StringBuilder();
+        Object exprCode = unaryExpr.getExpr().visit(this, arg);
+        Kind opKind = unaryExpr.getOp();
+        String operator = switch (opKind) {
+            case PLUS -> "+";
+            case MINUS -> "-";
+            case BANG -> "!";
+            default -> throw new PLCCompilerException("Unsupported unary operator: " + opKind);
+        };
+        sb.append(operator).append(exprCode);
+        return sb.toString();
+    }
 
 
 
+    @Override
+    public Object visitLValue(LValue lValue, Object arg) throws PLCCompilerException {
+        if (lValue.getNameDef() != null) {
+            return lValue.getNameDef().getJavaName();
+        } else {
+            if (arg instanceof Map) {
+                Map<String, String> paramMap = (Map<String, String>) arg;
+                String originalName = lValue.getName();
+                String paramName = paramMap.getOrDefault(originalName, originalName);
+                return paramName;
+            } else {
+                throw new PLCCompilerException("NameDef not found for LValue: " + lValue);
+            }
+        }
+    }
+
+
+
+
+    @Override
+    public Object visitWriteStatement(WriteStatement writeStatement, Object arg) throws PLCCompilerException {
+        StringBuilder sb = new StringBuilder();
+        Object exprCode = writeStatement.getExpr().visit(this, arg);
+        if (exprCode != null) {
+            sb.append("ConsoleIO.write(").append(exprCode.toString()).append(");\n");
+        }
+        return sb.toString();
+    }
+
+
+//    @Override
+//    public Object visitReturnStatement(ReturnStatement returnStatement, Object arg) throws PLCCompilerException {
+//        StringBuilder code = new StringBuilder();
+//        String exprCode = (String) returnStatement.getE().visit(this, arg);
+//        code.append("return ").append(exprCode).append(";\n");
+//        return code.toString();
+//    }
+
+
+    @Override
+    public Object visitReturnStatement(ReturnStatement returnStatement, Object arg) throws PLCCompilerException {
+        StringBuilder code = new StringBuilder();
+        Expr expr = returnStatement.getE();
+        String exprCode;
+
+        if (expr instanceof PostfixExpr) {
+            PostfixExpr postfixExpr = (PostfixExpr) expr;
+            ChannelSelector channelSelector = postfixExpr.channel();
+            if (channelSelector != null) {
+                String channelMethod = switch (channelSelector.color()) {
+                    case RES_red -> "red";
+                    case RES_green -> "green";
+                    case RES_blue -> "blue";
+                    default -> throw new PLCCompilerException("Unsupported channel selector: " + channelSelector);
+                };
+                String primaryExprCode = (String) postfixExpr.primary().visit(this, arg);
+                exprCode = "PixelOps." + channelMethod + "(" + primaryExprCode + ")";
+            } else {
+                exprCode = (String) expr.visit(this, arg);
+            }
+        } else {
+            exprCode = (String) expr.visit(this, arg);
+        }
+
+        code.append("return ").append(exprCode).append(";\n");
+        return code.toString();
+    }
+
+
+
+
+    @Override
+    public Object visitBlockStatement(StatementBlock statementBlock, Object arg) throws PLCCompilerException {
+        return statementBlock.getBlock().visit(this, arg);
+    }
+
+
+
+    @Override
+    public Object visitConstExpr(ConstExpr constExpr, Object arg) throws PLCCompilerException {
+        String constName = constExpr.getName();
+        if (constName.equals("Z")) {
+            return "255";
+        } else {
+            try {
+                java.awt.Color color = (java.awt.Color) java.awt.Color.class.getField(constName).get(null);
+                return Integer.toString(color.getRGB());
+            } catch (IllegalAccessException | NoSuchFieldException e) {
+                throw new PLCCompilerException("Unsupported constant: " + constName);
+            }
+        }
+    }
+
+
+
+    @Override
+    public Object visitDoStatement(DoStatement doStatement, Object arg) throws PLCCompilerException {
+        StringBuilder code = new StringBuilder();
+        code.append("do {\n");
+        for (GuardedBlock gBlock : doStatement.getGuardedBlocks()) {
+            code.append("if (");
+            String guardCode = (String) gBlock.getGuard().visit(this, arg);
+            code.append(guardCode).append(") ");
+            code.append(gBlock.getBlock().visit(this, arg));
+        }
+        code.append(" else if (a == b) {");
+        code.append("break;");
+        code.append("}\n");
+        code.append("} while (a != 0 && b != 0);\n");
+        return code.toString();
+    }
+
+
+    @Override
+    public Object visitExpandedPixelExpr(ExpandedPixelExpr expandedPixelExpr, Object arg) throws PLCCompilerException {
+        Object redComponent = expandedPixelExpr.getRed().visit(this, arg);
+        Object greenComponent = expandedPixelExpr.getGreen().visit(this, arg);
+        Object blueComponent = expandedPixelExpr.getBlue().visit(this, arg);
+
+        return "PixelOps.pack(" + redComponent + ", " + greenComponent + ", " + blueComponent + ")";
+    }
+
+
+    @Override
+    public Object visitIfStatement(IfStatement ifStatement, Object arg) throws PLCCompilerException {
+        StringBuilder code = new StringBuilder();
+        code.append("if (");
+        boolean first = true;
+        for (GuardedBlock gBlock : ifStatement.getGuardedBlocks()) {
+            if (!first) {
+                code.append(" else if (");
+            }
+            String guardCode = (String) gBlock.getGuard().visit(this, arg);
+            code.append(guardCode).append(") ");
+            code.append(gBlock.getBlock().visit(this, arg));
+            first = false;
+        }
+        code.append(" else {\n}\n");
+        return code.toString();
+    }
+
+    @Override
+    public Object visitGuardedBlock(GuardedBlock guardedBlock, Object arg) throws PLCCompilerException {
+        StringBuilder code = new StringBuilder();
+        String blockCode = (String) guardedBlock.getBlock().visit(this, arg);
+        code.append("{\n").append(blockCode).append("}\n");
+        return code.toString();
+    }
+
+
+
+    @Override
+    public Object visitPostfixExpr(PostfixExpr postfixExpr, Object arg) throws PLCCompilerException {
+        StringBuilder sb = new StringBuilder();
+        Object primaryExprCode = postfixExpr.primary().visit(this, arg);
+        Type primaryExprType = postfixExpr.primary().getType();
+        PixelSelector pixelSelector = postfixExpr.pixel();
+        ChannelSelector channelSelector = postfixExpr.channel();
+
+        if (primaryExprType == Type.PIXEL) {
+            if (channelSelector != null) {
+                Kind color = channelSelector.color();
+                String channelMethod = switch (color) {
+                    case RES_red -> "red";
+                    case RES_green -> "green";
+                    case RES_blue -> "blue";
+                    default -> throw new PLCCompilerException("Unsupported channel selector: " + color);
+                };
+                sb.append("PixelOps.").append(channelMethod).append("(").append(primaryExprCode).append(")");
+            } else {
+                sb.append(primaryExprCode);
+            }
+        } else if (primaryExprType == Type.IMAGE) {
+            if (pixelSelector != null && channelSelector == null) {
+                sb.append("ImageOps.getRGB(").append(primaryExprCode).append(", ").append(pixelSelector.visit(this, arg)).append(")");
+            } else if (pixelSelector != null && channelSelector != null) {
+                Kind color = channelSelector.color();
+                String channelMethod = switch (color) {
+                    case RES_red -> "red";
+                    case RES_green -> "green";
+                    case RES_blue -> "blue";
+                    default -> throw new PLCCompilerException("Unsupported channel selector: " + color);
+                };
+                sb.append("PixelOps.").append(channelMethod).append("(ImageOps.getRGB(").append(primaryExprCode).append(", ").append(pixelSelector.visit(this, arg)).append("))");
+            } else if (channelSelector != null) {
+                Kind color = channelSelector.color();
+                String extractMethod = switch (color) {
+                    case RES_red -> "extractRed";
+                    case RES_green -> "extractGreen";
+                    case RES_blue -> "extractBlue";
+                    default -> throw new PLCCompilerException("Unsupported channel selector: " + color);
+                };
+                sb.append("ImageOps.").append(extractMethod).append("(").append(primaryExprCode).append(")");
+            } else {
+                sb.append(primaryExprCode);
+            }
+        }
+
+        return sb.toString();
+    }
+
+
+    @Override
+    public Object visitDimension(Dimension dimension, Object arg) throws PLCCompilerException {
+        String widthExpr = (String) dimension.getWidth().visit(this, arg);
+        String heightExpr = (String) dimension.getHeight().visit(this, arg);
+        return widthExpr + ", " + heightExpr;
+    }
+
+
+    @Override
+    public Object visitPixelSelector(PixelSelector pixelSelector, Object arg) throws PLCCompilerException {
+        String xExprCode = (String) pixelSelector.xExpr().visit(this, arg);
+        String yExprCode = (String) pixelSelector.yExpr().visit(this, arg);
+        return xExprCode + ", " + yExprCode;
+    }
+
+    @Override
+    public Object visitChannelSelector(ChannelSelector channelSelector, Object arg) throws PLCCompilerException {
+        Kind color = channelSelector.color();
+        return switch (color) {
+            case RES_red -> "PixelOps.red";
+            case RES_green -> "PixelOps.green";
+            case RES_blue -> "PixelOps.blue";
+            default -> throw new PLCCompilerException("Unsupported channel selector: " + color);
+        };
+    }
 
 }
