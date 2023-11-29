@@ -9,11 +9,19 @@ import edu.ufl.cise.cop4020fa23.ast.*;
 import edu.ufl.cise.cop4020fa23.exceptions.PLCCompilerException;
 import edu.ufl.cise.cop4020fa23.exceptions.TypeCheckException;
 
+import edu.ufl.cise.cop4020fa23.runtime.PixelOps;
+import edu.ufl.cise.cop4020fa23.runtime.ImageOps;
+import edu.ufl.cise.cop4020fa23.runtime.ConsoleIO;
+import edu.ufl.cise.cop4020fa23.runtime.FileURLIO;
+import edu.ufl.cise.cop4020fa23.runtime.PLCRuntimeException;
+
+
+import edu.ufl.cise.cop4020fa23.Kind;
+
 
 
 
 public class CodeGeneratorVisitor implements ASTVisitor {
-
 
     // helper vars
     private Map<String, Integer> variableCounts = new HashMap<>();
@@ -22,6 +30,9 @@ public class CodeGeneratorVisitor implements ASTVisitor {
 
     /* ================================= MOKSH  ================================= */
 
+
+
+    //    CURRENT PROCESS
     @Override
     public Object visitProgram(Program program, Object arg) throws PLCCompilerException {
         StringBuilder code = new StringBuilder();
@@ -29,10 +40,13 @@ public class CodeGeneratorVisitor implements ASTVisitor {
         Type returnType = program.getType();
         String javaReturnType = getJavaType(returnType);
 
-
         String packageName = "edu.ufl.cise.cop4020fa23";
         code.append(String.format("package %s;\n", packageName));
-        code.append("import edu.ufl.cise.cop4020fa23.runtime.ConsoleIO;\n\n");
+        code.append("import edu.ufl.cise.cop4020fa23.runtime.ConsoleIO;\n");
+        code.append("import edu.ufl.cise.cop4020fa23.runtime.PixelOps;\n");
+        code.append("import edu.ufl.cise.cop4020fa23.runtime.ImageOps;\n");
+        code.append("import java.awt.image.BufferedImage;\n");
+        code.append("import edu.ufl.cise.cop4020fa23.runtime.FileURLIO;\n");
 
         StringBuilder params = new StringBuilder();
         Map<String, String> paramMap = new HashMap<>();
@@ -56,14 +70,20 @@ public class CodeGeneratorVisitor implements ASTVisitor {
 
         return code.toString();
     }
+
+
+
     private String getJavaType(Type type) {
         return switch (type) {
             case BOOLEAN -> "boolean";
             case INT -> "int";
             case STRING -> "String";
+            case PIXEL -> "int";
+            case IMAGE -> "java.awt.image.BufferedImage";
             default -> type.toString().toLowerCase();
         };
     }
+
 
     // list of reserved Java keywords
     private boolean isReservedKeyword(String name) {
@@ -127,6 +147,9 @@ public class CodeGeneratorVisitor implements ASTVisitor {
     }
 
 
+
+
+    //    SOLVED
     @Override
     public Object visitDeclaration(Declaration declaration, Object arg) throws TypeCheckException, PLCCompilerException {
         StringBuilder code = new StringBuilder();
@@ -145,9 +168,23 @@ public class CodeGeneratorVisitor implements ASTVisitor {
         String nameDefCode = String.format("%s %s", getJavaType(nameDef.getType()), scopedName);
         code.append(nameDefCode);
         Expr initializer = declaration.getInitializer();
+        Dimension dimension = nameDef.getDimension();
+
         if (initializer != null) {
             String exprCode = (String) initializer.visit(this, arg);
-            code.append(" = ").append(exprCode);
+            if (nameDef.getType() == Type.IMAGE) {
+                if (dimension != null) {
+                    code.append(" = ImageOps.copyAndResize(").append(exprCode)
+                            .append(", ").append(dimension.getWidth().visit(this, arg))
+                            .append(", ").append(dimension.getHeight().visit(this, arg)).append(")");
+                } else if (initializer.getType() == Type.STRING) {
+                    code.append(" = FileURLIO.readImage(").append(exprCode).append(")");
+                } else {
+                    code.append(" = ").append(exprCode);
+                }
+            } else {
+                code.append(" = ").append(exprCode);
+            }
         }
         code.append(";");
         return code.toString();
@@ -160,6 +197,71 @@ public class CodeGeneratorVisitor implements ASTVisitor {
         variableCounts.put(originalName, count + 1);
         return originalName + "_" + count;
     }
+
+
+
+
+
+//    PASS TEST CASE 6 BUT FAILS TEST CASE 9
+//    @Override
+//    public Object visitAssignmentStatement(AssignmentStatement assignmentStatement, Object arg) throws PLCCompilerException {
+//        StringBuilder sb = new StringBuilder();
+//        Object lValueCode = assignmentStatement.getlValue().visit(this, arg);
+//        if (lValueCode != null) {
+//            sb.append(lValueCode.toString());
+//        }
+//        sb.append(" = ");
+//        Object exprCode = assignmentStatement.getE().visit(this, arg);
+//        if (exprCode != null) {
+//            sb.append(exprCode.toString());
+//        }
+//        sb.append(";\n");
+//        return sb.toString();
+//    }
+
+
+    //    PASSES TEST CASE 9 BUT FAILS TEST CASE 6
+    @Override
+    public Object visitAssignmentStatement(AssignmentStatement assignmentStatement, Object arg) throws PLCCompilerException {
+        StringBuilder sb = new StringBuilder();
+        LValue lValue = assignmentStatement.getlValue();
+        Expr expr = assignmentStatement.getE();
+
+        Object lValueCode = lValue.visit(this, arg);
+        Object exprCode = expr.visit(this, arg);
+
+        if (lValue instanceof LValue) {
+            LValue lValueWithSelector = (LValue) lValue;
+            ChannelSelector channelSelector = lValueWithSelector.getChannelSelector();
+            if (channelSelector != null) {
+                Kind channelKind = channelSelector.color();
+                switch (channelKind) {
+                    case RES_red:
+                        sb.append(lValueCode).append(" = PixelOps.setRed(").append(lValueCode).append(", ").append(exprCode).append(");");
+                        break;
+                    case RES_green:
+                        sb.append(lValueCode).append(" = PixelOps.setGreen(").append(lValueCode).append(", ").append(exprCode).append(");");
+                        break;
+                    case RES_blue:
+                        sb.append(lValueCode).append(" = PixelOps.setBlue(").append(lValueCode).append(", ").append(exprCode).append(");");
+                        break;
+                    default:
+                        throw new PLCCompilerException("Unsupported channel selector: " + channelKind);
+                }
+            } else {
+                sb.append(lValueCode).append(" = ").append(exprCode).append(";");
+            }
+        } else {
+            sb.append(lValueCode).append(" = ").append(exprCode).append(";");
+        }
+
+        sb.append("\n");
+        return sb.toString();
+    }
+
+
+
+
 
     @Override
     public Object visitIdentExpr(IdentExpr identExpr, Object arg) throws PLCCompilerException {
@@ -185,7 +287,7 @@ public class CodeGeneratorVisitor implements ASTVisitor {
 
 
 
-    /* ================================= Daniel  ================================= */
+
 
     @Override
     public Object visitBooleanLitExpr(BooleanLitExpr booleanLitExpr, Object arg) throws PLCCompilerException {
@@ -206,18 +308,41 @@ public class CodeGeneratorVisitor implements ASTVisitor {
     }
 
 
+
+
+
     @Override
     public Object visitBinaryExpr(BinaryExpr binaryExpr, Object arg) throws PLCCompilerException {
         StringBuilder sb = new StringBuilder();
         Object leftExprCode = binaryExpr.getLeftExpr().visit(this, arg);
         Type leftExprType = binaryExpr.getLeftExpr().getType();
         Object rightExprCode = binaryExpr.getRightExpr().visit(this, arg);
+        Type rightExprType = binaryExpr.getRightExpr().getType();
         Kind opKind = binaryExpr.getOpKind();
-        if (leftExprType == Type.STRING && opKind == Kind.EQ) {
-            sb.append(leftExprCode).append(".equals(").append(rightExprCode).append(")");
+
+        if (leftExprType == Type.IMAGE && rightExprType == Type.IMAGE) {
+            sb.append("ImageOps.binaryImageImageOp(ImageOps.OP.")
+                    .append(opKind.name()).append(", ")
+                    .append(leftExprCode).append(", ").append(rightExprCode).append(")");
         }
-        else if (opKind == Kind.EXP) {
-            sb.append("((int)Math.round(Math.pow(").append(leftExprCode).append(", ").append(rightExprCode).append(")))");
+        else if (leftExprType == Type.IMAGE && rightExprType == Type.PIXEL ||
+                leftExprType == Type.PIXEL && rightExprType == Type.IMAGE) {
+            sb.append("ImageOps.binaryImagePixelOp(ImageOps.OP.")
+                    .append(opKind.name()).append(", ")
+                    .append(leftExprCode).append(", ").append(rightExprCode).append(")");
+        }
+        else if (leftExprType == Type.IMAGE && rightExprType == Type.INT) {
+            sb.append("ImageOps.binaryImageScalarOp(ImageOps.OP.")
+                    .append(opKind.name()).append(", ")
+                    .append(leftExprCode).append(", ").append(rightExprCode).append(")");
+        }
+        else if (leftExprType == Type.PIXEL && rightExprType == Type.PIXEL) {
+            sb.append("ImageOps.binaryPackedPixelPixelOp(ImageOps.OP.")
+                    .append(opKind.name()).append(", ")
+                    .append(leftExprCode).append(", ").append(rightExprCode).append(")");
+        }
+        else if (opKind == Kind.EQ && leftExprType == Type.STRING) {
+            sb.append(leftExprCode).append(".equals(").append(rightExprCode).append(")");
         }
         else {
             String operator = switch(opKind) {
@@ -236,143 +361,25 @@ public class CodeGeneratorVisitor implements ASTVisitor {
                 case GE -> ">=";
                 default -> throw new PLCCompilerException("Unsupported binary operator: " + opKind);
             };
-            sb.append("(").append(leftExprCode).append(" ").append(operator).append(" ").append(rightExprCode).append(")");
+            sb.append("(").append(leftExprCode).append(" ").append(operator).append(" ")
+                    .append(rightExprCode).append(")");
         }
+
         return sb.toString();
     }
 
 
 
-    @Override
-    public Object visitUnaryExpr(UnaryExpr unaryExpr, Object arg) throws PLCCompilerException {
-        StringBuilder sb = new StringBuilder();
-        Object exprCode = unaryExpr.getExpr().visit(this, arg);
-        Kind opKind = unaryExpr.getOp();
-        String operator = switch (opKind) {
-            case PLUS -> "+";
-            case MINUS -> "-";
-            case BANG -> "!";
-            default -> throw new PLCCompilerException("Unsupported unary operator: " + opKind);
-        };
-        sb.append(operator).append(exprCode);
-        return sb.toString();
-    }
+    /* ================================= *************8  ================================= */
+
+
+    /* ================================= Daniel  ================================= */
+
+
+    /* ================================= *************8  ================================= */
 
 
 
 
-    @Override
-    public Object visitLValue(LValue lValue, Object arg) throws PLCCompilerException {
-        if (lValue.getNameDef() != null) {
-            return lValue.getNameDef().getJavaName();
-        } else {
-            if (arg instanceof Map) {
-                Map<String, String> paramMap = (Map<String, String>) arg;
-                String originalName = lValue.getName();
-                String paramName = paramMap.getOrDefault(originalName, originalName);
-                return paramName;
-            } else {
-                throw new PLCCompilerException("NameDef not found for LValue: " + lValue);
-            }
-        }
-    }
-
-
-
-
-    @Override
-    public Object visitAssignmentStatement(AssignmentStatement assignmentStatement, Object arg) throws PLCCompilerException {
-        StringBuilder sb = new StringBuilder();
-        Object lValueCode = assignmentStatement.getlValue().visit(this, arg);
-        if (lValueCode != null) {
-            sb.append(lValueCode.toString());
-        }
-        sb.append(" = ");
-        Object exprCode = assignmentStatement.getE().visit(this, arg);
-        if (exprCode != null) {
-            sb.append(exprCode.toString());
-        }
-        sb.append(";\n");
-        return sb.toString();
-    }
-
-
-    @Override
-    public Object visitWriteStatement(WriteStatement writeStatement, Object arg) throws PLCCompilerException {
-        StringBuilder sb = new StringBuilder();
-        Object exprCode = writeStatement.getExpr().visit(this, arg);
-        if (exprCode != null) {
-            sb.append("ConsoleIO.write(").append(exprCode.toString()).append(");\n");
-        }
-        return sb.toString();
-    }
-
-
-    @Override
-    public Object visitReturnStatement(ReturnStatement returnStatement, Object arg) throws PLCCompilerException {
-        StringBuilder code = new StringBuilder();
-        String exprCode = (String) returnStatement.getE().visit(this, arg);
-        code.append("return ").append(exprCode).append(";\n");
-        return code.toString();
-    }
-
-
-    /* ================================= ASSIGNMENT 5 METHODS  ================================= */
-
-
-    @Override
-    public Object visitBlockStatement(StatementBlock statementBlock, Object arg) throws PLCCompilerException {
-        return statementBlock.getBlock().visit(this, arg);
-    }
-
-
-    @Override
-    public Object visitChannelSelector(ChannelSelector channelSelector, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-
-    @Override
-    public Object visitConstExpr(ConstExpr constExpr, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-
-    @Override
-    public Object visitDimension(Dimension dimension, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-    @Override
-    public Object visitDoStatement(DoStatement doStatement, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-    @Override
-    public Object visitExpandedPixelExpr(ExpandedPixelExpr expandedPixelExpr, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-    @Override
-    public Object visitGuardedBlock(GuardedBlock guardedBlock, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-
-    @Override
-    public Object visitIfStatement(IfStatement ifStatement, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-
-    @Override
-    public Object visitPixelSelector(PixelSelector pixelSelector, Object arg) throws PLCCompilerException {
-        return null;
-    }
-
-    @Override
-    public Object visitPostfixExpr(PostfixExpr postfixExpr, Object arg) throws PLCCompilerException {
-        return null;
-    }
 
 }
