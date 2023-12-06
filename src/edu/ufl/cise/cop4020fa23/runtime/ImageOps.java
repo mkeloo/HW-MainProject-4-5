@@ -30,7 +30,7 @@ import java.util.Arrays;
  * to 0xff.
  *
  * In an image, the color of a pixel is packed into an int, where 8 bits are
- * available for the alpha, red, green, and blue components. See the PixelOps 
+ * available for the alpha, red, green, and blue components. See the PixelOps
  * class for methods for working with pixels.
  *
  */
@@ -338,7 +338,7 @@ public class ImageOps {
 	/**
 	 * Returns an array of ints representing the packed pixels of the given image.
 	 *
-	 * This can be used in Junit test to compare two images by using 
+	 * This can be used in Junit test to compare two images by using
 	 * assertArrayEquals on the array return from this method.
 	 *
 	 * @param result
@@ -355,7 +355,7 @@ public class ImageOps {
 	}
 
 	/**
-	 * If coordinates are out of bounds does nothing. 
+	 * If coordinates are out of bounds does nothing.
 	 */
 	public static void setRGB(BufferedImage image, int x, int y, int pixel) {
 		int w = image.getWidth();
@@ -366,7 +366,7 @@ public class ImageOps {
 	}
 
 	/**
-	 * If coordinates are out of bounds it returns a black pixel. 
+	 * If coordinates are out of bounds it returns a black pixel.
 	 */
 	public static int getRGB(BufferedImage image, int x, int y) {
 		int w = image.getWidth();

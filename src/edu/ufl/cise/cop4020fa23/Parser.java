@@ -255,12 +255,6 @@ public class Parser implements IParser {
 					return ident;
 				}
 			}
-			case LPAREN -> {
-				match(LPAREN);
-				Expr expression = expr();
-				match(RPAREN);
-				return expression;
-			}
 			case CONST -> {
 				ConstExpr constExpr = new ConstExpr(token);
 				match(CONST);
@@ -269,6 +263,14 @@ public class Parser implements IParser {
 			case LSQUARE -> {
 				return expandedPixelExpr();
 			}
+
+			case LPAREN -> {
+				match(LPAREN);
+				Expr expression = expr();
+				match(RPAREN);
+				return expression;
+			}
+
 			default -> throw new SyntaxException(token.sourceLocation(), "Expected token of kind ...");
 		}
 	}
@@ -297,6 +299,20 @@ public class Parser implements IParser {
 		}
 	}
 
+//	// ExpandedPixel ::= [ Expr , Expr , Expr ]
+//	private ExpandedPixelExpr expandedPixelExpr() throws SyntaxException, PLCCompilerException {
+//		match(LSQUARE);
+//		Expr e1 = expr();
+//		match(COMMA);
+//		Expr e2 = expr();
+//		match(COMMA);
+//		Expr e3 = expr();
+//		if (isKind(RSQUARE)) {
+//			match(RSQUARE);
+//		}
+//		return new ExpandedPixelExpr(token, e1, e2, e3);
+//	}
+
 	// ExpandedPixel ::= [ Expr , Expr , Expr ]
 	private ExpandedPixelExpr expandedPixelExpr() throws SyntaxException, PLCCompilerException {
 		match(LSQUARE);
@@ -305,11 +321,10 @@ public class Parser implements IParser {
 		Expr e2 = expr();
 		match(COMMA);
 		Expr e3 = expr();
-		if (isKind(RSQUARE)) {
-			match(RSQUARE);
-		}
+		match(RSQUARE);
 		return new ExpandedPixelExpr(token, e1, e2, e3);
 	}
+
 
 // ************************************ START OF Expression Parser Code **************************************** //
 
@@ -504,9 +519,28 @@ public class Parser implements IParser {
 
 
 
+//	// method to parse the Block rule ::=> Block ::= <: (Declaration ; | Statement ;)* :>
+//	private Block block() throws SyntaxException, PLCCompilerException {
+//		IToken firstToken = match(Kind.BLOCK_OPEN);  // match <:
+//		List<Block.BlockElem> blockElems = new ArrayList<>();
+//		while (!isKind(Kind.BLOCK_CLOSE) && !isKind(Kind.EOF)) {
+//			if (isType()) {
+//				Declaration decl = declaration();
+//				blockElems.add((Block.BlockElem) decl);
+//				match(Kind.SEMI);
+//			} else {
+//				Statement stmt = statement();
+//				blockElems.add((Block.BlockElem) stmt);
+//				match(Kind.SEMI);
+//			}
+//		}
+//		match(Kind.BLOCK_CLOSE);  // match :>
+//		return new Block(firstToken, blockElems);
+//	}
+
 	// method to parse the Block rule ::=> Block ::= <: (Declaration ; | Statement ;)* :>
 	private Block block() throws SyntaxException, PLCCompilerException {
-		IToken firstToken = match(Kind.BLOCK_OPEN);  // match <:
+		IToken firstToken = match(Kind.BLOCK_OPEN); // match <:
 		List<Block.BlockElem> blockElems = new ArrayList<>();
 		while (!isKind(Kind.BLOCK_CLOSE) && !isKind(Kind.EOF)) {
 			if (isType()) {
@@ -516,12 +550,16 @@ public class Parser implements IParser {
 			} else {
 				Statement stmt = statement();
 				blockElems.add((Block.BlockElem) stmt);
-				match(Kind.SEMI);
+				// Check if the next token is SEMI, indicating the end of a statement
+				if (isKind(Kind.SEMI)) {
+					match(Kind.SEMI);
+				}
 			}
 		}
-		match(Kind.BLOCK_CLOSE);  // match :>
+		match(Kind.BLOCK_CLOSE); // match :>
 		return new Block(firstToken, blockElems);
 	}
+
 
 
 	// another helper method (overloading) for block() of type checking
@@ -553,9 +591,6 @@ public class Parser implements IParser {
 			return new Declaration(name.getTypeToken(), name, null);
 		}
 	}
-
-
-
 
 
 
